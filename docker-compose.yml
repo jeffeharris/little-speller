@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    ports:
+      - "${PORT:-5180}:${PORT:-5180}"
+    environment:
+      - PORT=${PORT:-5180}
+    volumes:
+      - ./src:/app/src
+      - ./static:/app/static
+    restart: unless-stopped
