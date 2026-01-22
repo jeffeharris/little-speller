@@ -662,39 +662,39 @@
 
   .loading-birds {
     position: absolute;
-    top: 8vh;
+    top: 14vh;
     left: 0;
     width: 100%;
-    height: 18vh;
+    height: 24vh;
     pointer-events: none;
-    z-index: 3;
+    z-index: 4;
   }
 
   .bird {
     position: absolute;
-    width: 3.6rem;
-    height: 1.4rem;
-    border-top: 0.3rem solid #1f3c40;
+    width: 4.4rem;
+    height: 1.7rem;
+    border-top: 0.28rem solid #1f3c40;
     border-radius: 50% 50% 0 0;
-    opacity: 0.75;
-    animation: bird-fly 50s linear infinite;
+    opacity: 0.95;
+    animation: bird-fly 70s linear infinite;
   }
 
   .bird::after {
     content: '';
     position: absolute;
-    right: -1.4rem;
+    right: -1.6rem;
     top: -0.06rem;
-    width: 3.6rem;
-    height: 1.4rem;
-    border-top: 0.3rem solid #1f3c40;
+    width: 4.4rem;
+    height: 1.7rem;
+    border-top: 0.28rem solid #1f3c40;
     border-radius: 50% 50% 0 0;
     transform: scaleX(-1);
   }
 
-  .bird-1 { top: 0.6rem; left: -20%; animation-delay: -6s; }
-  .bird-2 { top: 3.4rem; left: -30%; animation-delay: -18s; opacity: 0.6; }
-  .bird-3 { top: 1.9rem; left: -25%; animation-delay: -30s; opacity: 0.55; }
+  .bird-1 { top: 2.5vh; left: -10%; animation-delay: -8s; opacity: 0.75; }
+  .bird-2 { top: 6.5vh; left: -10%; animation-delay: -26s; opacity: 0.65; }
+  .bird-3 { top: 4vh; left: -10%; animation-delay: -44s; opacity: 0.6; }
 
   .loading-arc {
     position: absolute;
@@ -708,6 +708,7 @@
     justify-content: center;
     padding: 0 8vw;
     pointer-events: none;
+    z-index: 10;
   }
 
   .loading-arc span {
@@ -921,8 +922,8 @@
   }
 
   @keyframes bird-fly {
-    0% { transform: translateX(-20%); }
-    100% { transform: translateX(140%); }
+    0% { transform: translateX(-10vw); }
+    100% { transform: translateX(120vw); }
   }
 
   @keyframes flap-left {
