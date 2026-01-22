@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { spring } from 'svelte/motion';
   import { speakLetter } from '$lib/utils/speech.js';
-  import { resumeAudio, playLetterSound } from '$lib/utils/sounds.js';
+  import { resumeAudio, playLetterSoundImmediate } from '$lib/utils/sounds.js';
 
   export let letter;
   export let placed = false;
@@ -61,7 +61,7 @@
     };
 
     // Play recorded narration, fall back to TTS if needed
-    const clipDuration = playLetterSound(letter.char);
+    const clipDuration = playLetterSoundImmediate(letter.char);
     if (!clipDuration) {
       speakLetter(letter.char);
     }

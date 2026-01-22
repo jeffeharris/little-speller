@@ -31,6 +31,7 @@ const sounds = {
 const letterAudios = {};
 const phraseAudios = {};
 let lastEncouragementKey = '';
+let activeNarrationAudio = null;
 
 let oggSupportCache;
 function supportsOggPlayback() {
@@ -83,28 +84,6 @@ function unlockSound(audio) {
   }
 }
 
-function playAudioFromTemplate(audio, { label = '' } = {}) {
-  if (!audio) return false;
-  const now = Date.now();
-  const lastPlayed = audio.__lastPlayedTime || 0;
-  if (now - lastPlayed < 150) {
-    return false;
-  }
-  try {
-    const instance = audio.cloneNode(true);
-    instance.currentTime = 0;
-    instance.volume = audio.volume;
-    const result = instance.play();
-    audio.__lastPlayedTime = now;
-    if (result && typeof result.then === 'function') {
-      result.catch(() => {});
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function playAudioDirect(audio) {
   if (!audio) return false;
   try {
@@ -132,6 +111,70 @@ function playSound(audio) {
     audio.play().catch(() => {});
   } catch {
     // Ignore play failures (typically autoplay policies)
+  }
+}
+
+function playAudioFromTemplate(audio) {
+  if (!audio) return false;
+  const now = Date.now();
+  const lastPlayed = audio.__lastPlayedTime || 0;
+  if (now - lastPlayed < 120) {
+    return false;
+  }
+  try {
+    const instance = audio.cloneNode(true);
+    instance.currentTime = 0;
+    instance.volume = audio.volume;
+    const result = instance.play();
+    audio.__lastPlayedTime = now;
+    if (result && typeof result.then === 'function') {
+      result.catch(() => {});
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function stopNarrationAudio() {
+  if (!activeNarrationAudio) return;
+  try {
+    activeNarrationAudio.pause();
+    activeNarrationAudio.currentTime = 0;
+  } catch {
+    // Ignore stop failures
+  }
+  activeNarrationAudio = null;
+}
+
+function playNarrationAudio(audio) {
+  if (!audio) return false;
+  if (activeNarrationAudio && activeNarrationAudio !== audio) {
+    stopNarrationAudio();
+  }
+  activeNarrationAudio = audio;
+  audio.onended = () => {
+    if (activeNarrationAudio === audio) {
+      activeNarrationAudio = null;
+    }
+  };
+  try {
+    audio.pause();
+    audio.currentTime = 0;
+    const result = audio.play();
+    if (result && typeof result.then === 'function') {
+      result.catch(() => {
+        if (activeNarrationAudio === audio) {
+          activeNarrationAudio = null;
+        }
+      });
+    }
+    return true;
+  } catch {
+    if (activeNarrationAudio === audio) {
+      activeNarrationAudio = null;
+    }
+    return false;
   }
 }
 
@@ -194,6 +237,10 @@ export function resumeAudio() {
   Object.values(phraseAudios).forEach(unlockSound);
 }
 
+export function stopNarration() {
+  stopNarrationAudio();
+}
+
 // Play a satisfying suck-pop sound when letter snaps into place
 export function playPop() {
   initSounds();
@@ -216,6 +263,14 @@ export function playCelebration() {
 export function playLetterSound(letter) {
   const audio = getLetterAudio(letter);
   if (!audio) return 0;
+  const played = playNarrationAudio(audio);
+  if (!played) return 0;
+  return getAudioDurationMs(audio, 600);
+}
+
+export function playLetterSoundImmediate(letter) {
+  const audio = getLetterAudio(letter);
+  if (!audio) return 0;
   const played = playAudioFromTemplate(audio);
   if (!played) return 0;
   return getAudioDurationMs(audio, 600);
@@ -224,7 +279,7 @@ export function playLetterSound(letter) {
 export function playIsSpelled() {
   const audio = getPhraseAudio('isSpelled');
   if (!audio) return 0;
-  const played = playAudioFromTemplate(audio);
+  const played = playNarrationAudio(audio);
   if (!played) return 0;
   return getAudioDurationMs(audio, 900);
 }
@@ -232,8 +287,20 @@ export function playIsSpelled() {
 export async function playGreeting() {
   const audio = getPhraseAudio('greeting');
   if (!audio) return 0;
+  stopNarrationAudio();
+  activeNarrationAudio = audio;
+  audio.onended = () => {
+    if (activeNarrationAudio === audio) {
+      activeNarrationAudio = null;
+    }
+  };
   const played = await playAudioDirect(audio);
-  if (!played) return 0;
+  if (!played) {
+    if (activeNarrationAudio === audio) {
+      activeNarrationAudio = null;
+    }
+    return 0;
+  }
   return getAudioDurationMs(audio, 2200);
 }
 
@@ -245,7 +312,7 @@ export function playEncouragement() {
   lastEncouragementKey = key;
   const audio = getPhraseAudio(key);
   if (!audio) return 0;
-  const played = playAudioFromTemplate(audio);
+  const played = playNarrationAudio(audio);
   if (!played) return 0;
   return getAudioDurationMs(audio, 1400);
 }
