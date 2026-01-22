@@ -1,11 +1,14 @@
 <script>
   import { onMount } from 'svelte';
   import { game } from '$lib/stores/game.js';
-  import { initSpeech, speak, speakLetter, speakWord } from '$lib/utils/speech.js';
-  import { playPop, playCelebration, playThud, resumeAudio, playLetterSound, playIsSpelled, playGreeting, playEncouragement } from '$lib/utils/sounds.js';
+  import { initSpeech } from '$lib/utils/speech.js';
+  import { playPop, playThud } from '$lib/utils/sounds.js';
+  import { createGameFlow } from '$lib/logic/gameFlow.js';
   import Letter from './Letter.svelte';
   import WordSlots from './WordSlots.svelte';
   import Celebration from './Celebration.svelte';
+
+  const flow = createGameFlow({ game });
 
   let containerEl;
   let containerWidth = 0;
@@ -14,15 +17,6 @@
   let wordCenterX = 0;
   let wordCenterY = 0;
   let slotPositions = [];
-  let waitingForTap = true;  // iOS requires user gesture to unlock audio
-  let celebrating = false;
-  let activeCelebrationSlot = -1;
-  let wordHighlightActive = false;
-  let lastCelebratedWord = '';
-  let introRunning = false;
-  let introCompletedWord = '';
-  let slotsReadyForWord = false;
-  let initialGreetingPlaying = false;
 
   let snapDistance = 60;
   let halfLetter = 35;
@@ -36,13 +30,6 @@
     letterFontSize = Math.round(size * 0.6);
     letterRadius = Math.max(10, Math.round(size * 0.17));
   }
-  const WORD_MIN_DURATION = 500;
-  const IS_SPELLED_DELAY = 900;
-  const IS_SPELLED_BUFFER = 250;
-  const LETTER_BUFFER_AFTER = 220;
-  const GREETING_BUFFER = 350;
-  const ENCOURAGEMENT_EVERY = 3;
-  const ENCOURAGEMENT_BUFFER = 250;
   const flowerStems = Array.from({ length: 100 }, (_, i) => {
     const phase = i * 1.7;
     const height = 4.5 + (Math.sin(phase) + 1) * 2.2;
@@ -52,27 +39,6 @@
       delay: (i % 10) * 0.35
     };
   });
-
-  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-  async function sayWordWithPhrase(word, { highlight = false } = {}) {
-    if (highlight) {
-      wordHighlightActive = true;
-    }
-    await Promise.all([
-      speakWord(word),
-      wait(WORD_MIN_DURATION)
-    ]);
-    if (highlight) {
-      wordHighlightActive = false;
-    }
-    await wait(150);
-    const phraseDuration = playIsSpelled();
-    const phraseWait = phraseDuration
-      ? phraseDuration + IS_SPELLED_BUFFER
-      : IS_SPELLED_DELAY;
-    await wait(phraseWait);
-  }
 
   onMount(() => {
     initSpeech();
@@ -89,64 +55,13 @@
       containerWidth = containerEl.clientWidth;
       containerHeight = containerEl.clientHeight;
       isLandscape = containerWidth > containerHeight;
+      flow.setLayout({ width: containerWidth, height: containerHeight, isLandscape });
     }
-  }
-
-  // Called on user tap - unlocks audio on iOS
-  async function handleTapToStart() {
-    if (!waitingForTap) return;
-    waitingForTap = false;
-
-    // Unlock audio context (iOS requires this from user gesture)
-    resumeAudio();
-
-    // Unlock speech synthesis by speaking from user gesture
-    // This empty utterance unlocks iOS speech
-    if (window.speechSynthesis) {
-      const unlock = new SpeechSynthesisUtterance('');
-      window.speechSynthesis.speak(unlock);
-    }
-
-    game.setPhase('showing');
-
-    const word = game.getNextWord();
-    const greetingDuration = await playGreeting();
-    if (greetingDuration) {
-      initialGreetingPlaying = true;
-      wait(greetingDuration + GREETING_BUFFER).then(() => {
-        initialGreetingPlaying = false;
-        startNewWord(word);
-      });
-    } else {
-      initialGreetingPlaying = true;
-      speak('Hello, little speller!', 0.82).then(() => {
-        initialGreetingPlaying = false;
-        startNewWord(word);
-      });
-    }
-  }
-
-  function startNewWord(word) {
-    lastCelebratedWord = '';
-    activeCelebrationSlot = -1;
-    wordHighlightActive = false;
-    introCompletedWord = '';
-    slotsReadyForWord = false;
-    game.initWord(word, containerWidth, containerHeight, { isLandscape });
-
-    // Letter tiles start in their slots; intro narration will scatter after completion
   }
 
   function handleSlotsReady(e) {
     slotPositions = e.detail.positions;
-    game.setSlotPositions(slotPositions);
-    slotsReadyForWord = true;
-    updateWordCenter(slotPositions);
-
-    if ($game.phase === 'showing') {
-      game.showWordInSlots();
-      startIntroSequence($game.currentWord);
-    }
+    flow.handleSlotsReady(slotPositions, updateWordCenter);
   }
 
   function getLetterBounds() {
@@ -229,149 +144,7 @@
 
   // Watch for celebration phase
   $: if ($game.phase === 'celebrating') {
-    triggerCelebrationSequence($game.currentWord);
-  }
-
-  async function startIntroSequence(word) {
-    if (
-      !word ||
-      !slotsReadyForWord ||
-      introRunning ||
-      introCompletedWord === word ||
-      $game.phase !== 'showing' ||
-      initialGreetingPlaying
-    ) return;
-
-    introRunning = true;
-    activeCelebrationSlot = -1;
-    wordHighlightActive = false;
-
-    await runSpellingSequence(word, { includeInitialWord: true });
-
-    introCompletedWord = word;
-    introRunning = false;
-
-    setTimeout(() => {
-      activeCelebrationSlot = -1;
-      wordHighlightActive = false;
-      game.scatterLetters();
-    }, 200);
-  }
-
-  async function triggerCelebrationSequence(word) {
-    if (!word || celebrating || lastCelebratedWord === word) return;
-
-    celebrating = true;
-    lastCelebratedWord = word;
-
-    await wait(1000);
-    playCelebration();
-    await wait(1000);
-    await maybePlayEncouragement();
-    await runRecordedLetterSequence(word);
-
-    celebrating = false;
-
-    setTimeout(() => {
-      const nextWord = game.nextWord();
-      startNewWord(nextWord);
-    }, 800);
-  }
-
-  async function runSpellingSequence(word, { includeInitialWord = true } = {}) {
-    if (!word) return;
-
-    await sayWordWithPhrase(word, { highlight: includeInitialWord });
-
-
-    const letters = word.split('');
-    for (let i = 0; i < letters.length; i++) {
-      activeCelebrationSlot = i;
-      const clipDuration = playLetterSound(letters[i]);
-      if (clipDuration) {
-        await wait(clipDuration + LETTER_BUFFER_AFTER);
-      } else {
-        await Promise.all([
-          speakLetter(letters[i]),
-          wait(LETTER_MIN_DURATION)
-        ]);
-        await wait(LETTER_BUFFER_AFTER);
-      }
-      activeCelebrationSlot = -1;
-    }
-
-    wordHighlightActive = true;
-    await Promise.all([
-      speak(`${word}.`, 0.78),
-      wait(WORD_MIN_DURATION)
-    ]);
-    wordHighlightActive = false;
-    await wait(150);
-  }
-
-  async function runRecordedLetterSequence(word) {
-    if (!word) return;
-
-    const sequence = getPlacedLetterSequence(word);
-    for (let i = 0; i < sequence.length; i++) {
-      const { char, slotIndex } = sequence[i];
-      activeCelebrationSlot = slotIndex;
-      const clipDuration = playLetterSound(char);
-      if (clipDuration) {
-        await wait(clipDuration + LETTER_BUFFER_AFTER);
-      } else {
-        await Promise.all([
-          speakLetter(char),
-          wait(LETTER_MIN_DURATION)
-        ]);
-        await wait(LETTER_BUFFER_AFTER);
-      }
-      activeCelebrationSlot = -1;
-    }
-
-    wordHighlightActive = true;
-    await Promise.all([
-      speakWord(word),
-      wait(WORD_MIN_DURATION)
-    ]);
-    wordHighlightActive = false;
-    await wait(150);
-  }
-
-  async function maybePlayEncouragement() {
-    const completedCount = $game.wordsCompleted;
-    if (completedCount < 1) return;
-    if ((completedCount - 1) % ENCOURAGEMENT_EVERY !== 0) return;
-    const duration = playEncouragement();
-    if (duration) {
-      await wait(duration + ENCOURAGEMENT_BUFFER);
-    }
-  }
-
-  function getPlacedLetterSequence(word) {
-    const slotsWithIndex = ($game.slots || []).map((slot, index) => ({
-      ...slot,
-      index
-    }));
-
-    const orderedSlots = slotsWithIndex.sort((a, b) => {
-      if (a.x === b.x) return a.y - b.y;
-      return a.x - b.x;
-    });
-
-    const screenOrder = orderedSlots
-      .map(slot => $game.letters.find(letter => letter.id === slot.letterId))
-      .filter(Boolean)
-      .map(letter => ({
-        char: letter.char,
-        slotIndex: letter.slotIndex ?? letter.correctSlotIndex
-      }));
-
-    if (screenOrder.length) {
-      return screenOrder;
-    }
-
-    return word.split('').map((char, i) => ({ char, slotIndex: i }));
+    flow.triggerCelebrationSequence($game.currentWord);
   }
 </script>
 
@@ -388,14 +161,14 @@
   {#if $game.phase !== 'loading'}
     <div
       class="word-stage"
-      class:word-stage-highlight={wordHighlightActive}
+      class:word-stage-highlight={$flow.wordHighlightActive}
       style="--word-center-x: {wordCenterX}px; --word-center-y: {wordCenterY}px;"
     >
       <div class="word-area">
         <WordSlots
           word={$game.currentWord}
           slots={$game.slots}
-          wordHighlight={wordHighlightActive}
+          wordHighlight={$flow.wordHighlightActive}
           on:slotsready={handleSlotsReady}
         />
       </div>
@@ -408,8 +181,8 @@
         <Letter
           {letter}
           placed={letter.placed}
-          highlighted={letter.correctSlotIndex === activeCelebrationSlot}
-          wordHighlight={wordHighlightActive}
+          highlighted={letter.correctSlotIndex === $flow.activeCelebrationSlot}
+          wordHighlight={$flow.wordHighlightActive}
           interactable={$game.phase === 'playing'}
           on:dragstart={handleDragStart}
           on:dragend={handleDragEnd}
@@ -421,7 +194,7 @@
     <button
       class="loading"
       type="button"
-      on:click={handleTapToStart}
+      on:click={flow.handleTapToStart}
     >
       <div class="loading-screen">
         <div class="loading-butterflies" aria-hidden="true">
@@ -719,7 +492,7 @@
     height: auto;
     margin: 0 0.35rem;
     padding: 0 0.12rem;
-    font-size: clamp(5.184rem, 15.552vw, 12.96rem);
+    font-size: clamp(4.4rem, 12.5vmin, 12.96rem);
     font-weight: 900;
     color: #1d3557;
     animation: pop 1.8s ease-in-out infinite;
@@ -733,6 +506,30 @@
     top: calc(45% + 9vh);
     width: min(94vw, 42rem);
     height: 22vh;
+  }
+
+  @media (max-width: 640px) {
+    .loading-arc {
+      width: 92vw;
+      height: 24vh;
+      padding: 0 4vw;
+    }
+
+    .loading-arc span {
+      margin: 0 0.18rem;
+      padding: 0;
+      font-size: clamp(2.8rem, 14vw, 6.4rem);
+    }
+
+    .loading-arc-top {
+      top: calc(40% - 9vh);
+    }
+
+    .loading-arc-bottom {
+      top: calc(45% + 7vh);
+      width: 90vw;
+      height: 18vh;
+    }
   }
 
   .loading-arc span:nth-child(1) { color: #ff6b6b; animation-delay: 0s; }
