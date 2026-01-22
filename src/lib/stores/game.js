@@ -1,58 +1,94 @@
 import { writable } from 'svelte/store';
 import { words, shuffleArray } from '$lib/data/words.js';
 
-// Shared constants
-export const LETTER_SIZE = 70;
-const LETTER_PADDING = 20;
+const MIN_LETTER_SIZE = 64;
+const MAX_LETTER_SIZE = 110;
+const SLOT_PADDING_FACTOR = 0.28;
+const SLOT_GAP_FACTOR = 0.12;
 
-// Letter colors - bright and kid-friendly
-const COLORS = [
-  '#FF6B6B', // red
-  '#4ECDC4', // teal
-  '#45B7D1', // blue
-  '#96CEB4', // green
-  '#FFEAA7', // yellow
-  '#DDA0DD', // plum
-  '#98D8C8', // mint
-  '#F7DC6F', // gold
-  '#BB8FCE', // purple
-  '#85C1E9', // light blue
+// Letter colors - curated, contrasting 6-color sets
+const COLOR_SETS = [
+  ['#E74C3C', '#F1C40F', '#2ECC71', '#3498DB', '#9B59B6', '#E67E22'],
+  ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#9D4EDD', '#F4A261'],
+  ['#EF476F', '#FFD166', '#06D6A0', '#118AB2', '#8338EC', '#F77F00']
 ];
 
 function createGameStore() {
   const shuffledWords = shuffleArray(words);
   let wordIndex = 0;
+  let paletteIndex = 0;
+  let colorBag = [];
 
   const store = writable({
     currentWord: '',
     letters: [], // { id, char, color, x, y, placed, slotIndex }
     slots: [],   // { x, y, width, height, filled, letterId }
     phase: 'loading', // 'loading', 'showing', 'scrambling', 'playing', 'celebrating'
-    wordsCompleted: 0
+    wordsCompleted: 0,
+    placementOrder: [],
+    letterSize: 70
   });
 
-  function generateScatterPositions(count, containerWidth, containerHeight, wordZoneTop, wordZoneBottom) {
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(value, max));
+  }
+
+  function clampPosition(position, bounds) {
+    if (!bounds) return position;
+    return {
+      x: clamp(position.x, bounds.minX, bounds.maxX),
+      y: clamp(position.y, bounds.minY, bounds.maxY)
+    };
+  }
+
+  function normalizeVelocity(velocity, maxSpeed) {
+    if (!velocity) return { x: 0, y: 0 };
+    const speed = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
+    if (speed <= maxSpeed || speed === 0) return velocity;
+    const scale = maxSpeed / speed;
+    return { x: velocity.x * scale, y: velocity.y * scale };
+  }
+
+  function computeLetterSize(containerWidth, containerHeight, wordLength, isLandscape) {
+    const widthBudget = containerWidth * 0.88;
+    const widthDenominator = wordLength + 2 * SLOT_PADDING_FACTOR + SLOT_GAP_FACTOR * (wordLength - 1);
+    const sizeByWidth = widthBudget / widthDenominator;
+    const sizeByHeight = containerHeight * (isLandscape ? 0.22 : 0.18);
+    const rawSize = Math.min(sizeByWidth, sizeByHeight);
+
+    return clamp(Math.floor(rawSize), MIN_LETTER_SIZE, MAX_LETTER_SIZE);
+  }
+
+  function generateScatterPositions(
+    count,
+    containerWidth,
+    containerHeight,
+    wordZoneTop,
+    wordZoneBottom,
+    letterSize
+  ) {
+    const letterPadding = clamp(Math.round(letterSize * SLOT_PADDING_FACTOR), 16, 32);
     const positions = [];
 
     // Define zones above and below the word area
     const topZone = {
-      yMin: LETTER_PADDING,
-      yMax: Math.max(LETTER_PADDING, wordZoneTop - LETTER_SIZE - LETTER_PADDING)
+      yMin: letterPadding,
+      yMax: Math.max(letterPadding, wordZoneTop - letterSize - letterPadding)
     };
     const bottomZone = {
-      yMin: wordZoneBottom + LETTER_PADDING,
-      yMax: Math.max(wordZoneBottom + LETTER_PADDING, containerHeight - LETTER_SIZE - LETTER_PADDING)
+      yMin: wordZoneBottom + letterPadding,
+      yMax: Math.max(wordZoneBottom + letterPadding, containerHeight - letterSize - letterPadding)
     };
 
     // Ensure zones have valid ranges (handle small screens)
     const topHeight = topZone.yMax - topZone.yMin;
     const bottomHeight = bottomZone.yMax - bottomZone.yMin;
-    const useTopZone = topHeight > LETTER_SIZE;
-    const useBottomZone = bottomHeight > LETTER_SIZE;
+    const useTopZone = topHeight > letterSize;
+    const useBottomZone = bottomHeight > letterSize;
 
     // Calculate valid x range
-    const xMin = LETTER_PADDING;
-    const xMax = Math.max(LETTER_PADDING, containerWidth - LETTER_SIZE - LETTER_PADDING);
+    const xMin = letterPadding;
+    const xMax = Math.max(letterPadding, containerWidth - letterSize - letterPadding);
     const xRange = xMax - xMin;
 
     for (let i = 0; i < count; i++) {
@@ -68,7 +104,7 @@ function createGameStore() {
         zone = bottomZone;
       } else {
         // Fallback: place around edges if screen is very small
-        zone = { yMin: LETTER_PADDING, yMax: containerHeight - LETTER_SIZE - LETTER_PADDING };
+        zone = { yMin: letterPadding, yMax: containerHeight - letterSize - letterPadding };
       }
 
       do {
@@ -77,7 +113,7 @@ function createGameStore() {
         attempts++;
       } while (
         attempts < 50 &&
-        positions.some(p => Math.abs(p.x - x) < LETTER_SIZE && Math.abs(p.y - y) < LETTER_SIZE)
+        positions.some(p => Math.abs(p.x - x) < letterSize && Math.abs(p.y - y) < letterSize)
       );
 
       positions.push({ x, y });
@@ -96,9 +132,10 @@ function createGameStore() {
       }));
     },
 
-    initWord(word, containerWidth, containerHeight) {
-      const wordZoneTop = containerHeight * 0.35;
-      const wordZoneBottom = containerHeight * 0.55;
+    initWord(word, containerWidth, containerHeight, { isLandscape = false } = {}) {
+      const wordZoneTop = containerHeight * (isLandscape ? 0.28 : 0.35);
+      const wordZoneBottom = containerHeight * (isLandscape ? 0.46 : 0.55);
+      const letterSize = computeLetterSize(containerWidth, containerHeight, word.length, isLandscape);
 
       // Create slots for the word (positions will be set by WordSlots component)
       const slots = word.split('').map((char, i) => ({
@@ -118,7 +155,8 @@ function createGameStore() {
         containerWidth,
         containerHeight,
         wordZoneTop,
-        wordZoneBottom
+        wordZoneBottom,
+        letterSize
       );
 
       const shuffledIndices = shuffleArray([...Array(word.length).keys()]);
@@ -127,7 +165,7 @@ function createGameStore() {
         id: `letter-${i}`,
         char,
         correctSlotIndex: i,
-        color: COLORS[i % COLORS.length],
+        color: takeColorFromBag(),
         x: containerWidth / 2, // Start in center
         y: containerHeight / 2,
         targetX: scatterPositions[shuffledIndices[i]].x,
@@ -141,7 +179,9 @@ function createGameStore() {
         currentWord: word,
         letters,
         slots,
-        phase: 'showing'
+        phase: 'showing',
+        placementOrder: [],
+        letterSize
       }));
     },
 
@@ -153,6 +193,24 @@ function createGameStore() {
           ...slotPositions[i]
         }))
       }));
+    },
+
+    showWordInSlots() {
+      store.update(s => {
+        if (!s.slots.length) return s;
+        return {
+          ...s,
+          letters: s.letters.map(letter => {
+            const slot = s.slots[letter.correctSlotIndex];
+            if (!slot) return letter;
+            return {
+              ...letter,
+              x: slot.x,
+              y: slot.y
+            };
+          })
+        };
+      });
     },
 
     scatterLetters() {
@@ -172,6 +230,28 @@ function createGameStore() {
         ...s,
         letters: s.letters.map(letter =>
           letter.id === letterId ? { ...letter, x, y } : letter
+        )
+      }));
+    },
+
+    getMomentumTarget(position, velocity, bounds) {
+      const maxSpeed = 1.6;
+      const glideMs = 170;
+      const momentum = normalizeVelocity(velocity, maxSpeed);
+      const target = {
+        x: position.x + momentum.x * glideMs,
+        y: position.y + momentum.y * glideMs
+      };
+
+      return clampPosition(target, bounds);
+    },
+
+    applyMomentum(letterId, position, velocity, bounds) {
+      const target = this.getMomentumTarget(position, velocity, bounds);
+      store.update(s => ({
+        ...s,
+        letters: s.letters.map(letter =>
+          letter.id === letterId ? { ...letter, x: target.x, y: target.y } : letter
         )
       }));
     },
@@ -206,6 +286,9 @@ function createGameStore() {
             ? { ...l, placed: true, slotIndex, x: slot.x, y: slot.y }
             : l
         );
+        const newPlacementOrder = s.placementOrder.includes(letterId)
+          ? s.placementOrder
+          : [...s.placementOrder, letterId];
 
         // Check if all letters are placed
         const allPlaced = newLetters.every(l => l.placed);
@@ -214,6 +297,7 @@ function createGameStore() {
           ...s,
           letters: newLetters,
           slots: newSlots,
+          placementOrder: newPlacementOrder,
           phase: allPlaced ? 'celebrating' : 'playing'
         };
       });
@@ -242,6 +326,19 @@ function createGameStore() {
       return shuffledWords[wordIndex];
     }
   };
+
+  function refillColorBag() {
+    const palette = COLOR_SETS[paletteIndex % COLOR_SETS.length];
+    paletteIndex += 1;
+    colorBag = shuffleArray(palette);
+  }
+
+  function takeColorFromBag() {
+    if (colorBag.length === 0) {
+      refillColorBag();
+    }
+    return colorBag.pop();
+  }
 }
 
 export const game = createGameStore();

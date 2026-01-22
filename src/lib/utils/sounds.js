@@ -1,78 +1,232 @@
-// Sound effects - using HTML5 Audio for iOS compatibility
+// Sound effects handled via HTMLAudioElement for best iOS compatibility
 
-let popSound = null;
+const SOUND_PATHS = {
+  pop: '/audio/placed_1.mp3',
+  thud: '/audio/rejected.mp3',
+  celebration: '/audio/success.mp3'
+};
 
-// Base64 encoded short pop/click sound
-const POP_SOUND_DATA = 'data:audio/wav;base64,UklGRl4FAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YToFAAB/f39/f39/f4KIjpSZnaGkoqCdmJKLhH17eHZ1dnd6f4WMk5qgpqqsq6iknpiRin9zcGtoaGlscXiAiZGZoKaqq6qnopyVjYR7cGdgWVdXWV1jaHB6hI6Xn6Woqainop2Wj4Z9cmdiXFdVU1VYXWRtd4KMlp+lq66vrKmlnpiPhn1yZ2BaVVFQUFNYX2dxe4eQmqKorK6urKmkoZiQhn1xZ19ZVFBOTlBUWmNscHeAjZagqK2wr62qpqGYkYd9c2ljXVlUUE9OUFVcZW51f4qUnKOprq+uraumoZqRiX9zbWZgWlZTUE9RVVtjbHV/i5Sco6qur66sqKSemJCGfXJqY1xYVFFOTlFWXWVud4GNlp6lq6+wr66qpqGZkId+c2xmX1lUUE1MTlNaYmtze4aMlZ2kqq6wr66rp6KbkoqAfHJrZF5ZU09MTU9UW2Nrdn+Jkpqhp6yvsK6sqaOfmZCHfnVuZ2FcV1JOTExPU1pfZ3F7hY6Wnaaqrq+vraylop2Wj4Z+dW5oYV1XU05MTU9TV1xka3R9homRmaCmq66vrq2ppKCZkYmBenNtZ2JdWVRQTU1OUVVaYGhweYKKkpieoqiqq6yqp6Sfm5SPh4B5c21oY19bV1NOTVBSVV1ia3N8hI2UnqOoq62trKqno5+Zk4yEfHZwamViXllVUE5NT1FWWmBncHmBipKZn6Omqaqrq6qnpKCcl5GKgnt0b2pnY19bWFRRT09SVllgZ294gIiPl52jpqmrq6yrqKWhnpqVj4mCe3VwbGlmYl9bWFVTUlNWWV5lbHR8g4uTmZ+jp6mqq6yrqaalop+bmJONh4F8d3NvbGllYl9cWVdWVlhaXWNpb3d/hoySnqGmqKqrrKupp6WjoZ6bmJSQi4aDfnl2c3BtaWdkYF9dXFtcXmFlaW50eoGGjJGWmZ2foKGhoaCfnp2bmJaSj4yKhoOAfXp3dHJwbmxqaGdlZGNjY2RlZ2lrbnF0d3p9gIKFh4mKi4yMjIyLi4qJiIeGhYSDgoGAf359fHt6eXl4eHd3d3d3d3d4eHl6e3x9fn+AgYKDhIWGh4iJiouMjI2Njo6Ojo6Ojo6OjY2MjIuLiomIh4aFhIOCgYB/fn18e3p5eXh3d3Z2dnZ2dnd3eHl6e3x9f4CBgoOEhYaHiImKi4yNjY6Ojo+Pj4+Pj4+Pj46OjY2MjIuKiYmIh4aFhIOCgYB/fn18e3p5eHh3dnZ2dnV1dXV2dnd4eXp7fH1/gIGCg4SFhoeIiYqLjI2Ojo+Pj4+QkJCQkJCPj4+Pjo6NjYyLioqJiIeGhYSDgoGAf359fHt6eXh4d3Z2dXV1dXV1dXZ2d3h5ent8fX5/gIGCg4SFhoeIiYqLjI2Oj4+QkJCQkJGRkZGRkJCQj4+OjY2MjIuKiYiHhoWEg4KBgH9+fXx7enl4d3d2dnV1dXR0dHV1dXZ3eHl6e3x+f4CBgoOEhYaHiImKi4yNjo+PkJCRkZGRkZGRkZGQkI+Pjo6NjYyLioqJiIeGhYSDgoGAf359fHt6eXh3d3Z2dXV0dHR0dHV1dnd4eXp7fH5/gIGCg4SFhoeIiYqLjI2Oj4+QkJGRkZGSkpKSkZGRkJCPj46OjY2Mi4qKiYiHhoWEg4KBgH9+fXx7enl4d3d2dnV1dHR0dHR0dXV2d3h5ent8fn+AgYKDhIWGh4iJiouMjY6Pj5CQkZGRkpKSkpKSkZGQkI+Pjo6NjIyLioqJiIeGhYSDgoGAf359fHt6eXh3d3Z2dXV0dHR0dHR1dXZ3eHl6e3x+f4CBgoOEhYaHiImKi4yNjo+PkJCRkZGSkpKSkpKRkZCQj4+OjY2MjIuKiYmIh4aFhIOCgYB/fn18e3p5eHd3dnZ1dXR0dA==';
+const LETTER_AUDIO_BASE = '/audio/letters';
+const LETTER_FILE_MAP = {};
+'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach((char, index) => {
+  const trackNumber = String(index + 5).padStart(2, '0');
+  LETTER_FILE_MAP[char] = `${LETTER_AUDIO_BASE}/${trackNumber}-letter-${char}.ogg`;
+});
 
-// Initialize sounds (call after user interaction on iOS)
-function initSounds() {
-  if (typeof window === 'undefined') return;
+const PHRASE_AUDIO_PATHS = {
+  isSpelled: '/audio/phrases/04-is-spelled.ogg',
+  greeting: '/audio/phrases/01-hello-little-speller.ogg',
+  youDidGreat: '/audio/phrases/31-you-did-great.ogg',
+  youCanSpell: '/audio/phrases/32-you-can-spell.ogg',
+  youDidIt: '/audio/phrases/34-you-did-it.ogg',
+  workingHard: '/audio/phrases/35-working-hard-at-this.ogg'
+};
 
-  if (!popSound) {
-    popSound = new Audio(POP_SOUND_DATA);
-    popSound.volume = 1.0;  // Max volume
+const sounds = {
+  pop: null,
+  thud: null,
+  celebration: null
+};
+
+const letterAudios = {};
+const phraseAudios = {};
+let lastEncouragementKey = '';
+
+let oggSupportCache;
+function supportsOggPlayback() {
+  if (oggSupportCache !== undefined) return oggSupportCache;
+  if (typeof window === 'undefined' || typeof window.Audio === 'undefined') {
+    oggSupportCache = true;
+    return oggSupportCache;
   }
+  try {
+    const test = new window.Audio();
+    oggSupportCache = typeof test.canPlayType === 'function'
+      ? test.canPlayType('audio/ogg; codecs="vorbis"') !== ''
+      : false;
+  } catch {
+    oggSupportCache = false;
+  }
+  return oggSupportCache;
+}
+
+let initialized = false;
+
+function createAudio(path, volume = 1) {
+  const audio = new Audio(path);
+  audio.preload = 'auto';
+  audio.volume = volume;
+  return audio;
+}
+
+// Initialize all sound assets the first time we need them
+function initSounds() {
+  if (typeof window === 'undefined' || initialized) return;
+
+  sounds.pop = createAudio(SOUND_PATHS.pop, 0.95);
+  sounds.thud = createAudio(SOUND_PATHS.thud, 0.8);
+  sounds.celebration = createAudio(SOUND_PATHS.celebration, 0.85);
+
+  initialized = true;
+}
+
+function unlockSound(audio) {
+  if (!audio) return;
+  const playPromise = audio.play();
+  if (playPromise && typeof playPromise.then === 'function') {
+    playPromise
+      .then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+      })
+      .catch(() => {});
+  }
+}
+
+function playAudioFromTemplate(audio) {
+  if (!audio) return false;
+  const now = Date.now();
+  const lastPlayed = audio.__lastPlayedTime || 0;
+  if (now - lastPlayed < 150) {
+    return false;
+  }
+  try {
+    const instance = audio.cloneNode(true);
+    instance.currentTime = 0;
+    instance.volume = audio.volume;
+    const result = instance.play();
+    audio.__lastPlayedTime = now;
+    if (result && typeof result.then === 'function') {
+      result.catch(() => {});
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function playSound(audio) {
+  if (!audio) return;
+  try {
+    audio.pause();
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
+  } catch {
+    // Ignore play failures (typically autoplay policies)
+  }
+}
+
+function cacheDurationOnLoad(audio, fallback) {
+  if (!audio || audio.__durationListenerAttached) return fallback;
+  audio.__durationListenerAttached = true;
+  audio.addEventListener(
+    'loadedmetadata',
+    () => {
+      if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        audio.__cachedDurationMs = audio.duration * 1000;
+      }
+    },
+    { once: true }
+  );
+  return fallback;
+}
+
+function getAudioDurationMs(audio, fallback = 500) {
+  if (!audio) return fallback;
+  const cached = audio.__cachedDurationMs;
+  if (typeof cached === 'number' && cached > 0) {
+    return cached;
+  }
+  const duration = audio.duration;
+  if (Number.isFinite(duration) && duration > 0) {
+    const ms = duration * 1000;
+    audio.__cachedDurationMs = ms;
+    return ms;
+  }
+  return cacheDurationOnLoad(audio, fallback);
+}
+
+function getLetterAudio(letter) {
+  if (!letter || !supportsOggPlayback()) return null;
+  const upper = letter.toUpperCase();
+  const path = LETTER_FILE_MAP[upper];
+  if (!path) return null;
+  if (!letterAudios[upper]) {
+    letterAudios[upper] = createAudio(path, 0.95);
+  }
+  return letterAudios[upper];
+}
+
+function getPhraseAudio(key) {
+  if (!supportsOggPlayback()) return null;
+  const path = PHRASE_AUDIO_PATHS[key];
+  if (!path) return null;
+  if (!phraseAudios[key]) {
+    phraseAudios[key] = createAudio(path, 0.95);
+  }
+  return phraseAudios[key];
 }
 
 // Resume audio (needed after user interaction on mobile)
 export function resumeAudio() {
   initSounds();
-  // Play and immediately pause to "unlock" audio on iOS
-  if (popSound) {
-    const playPromise = popSound.play();
-    if (playPromise) {
-      playPromise.then(() => {
-        popSound.pause();
-        popSound.currentTime = 0;
-      }).catch(() => {});
-    }
-  }
+  Object.values(sounds).forEach(unlockSound);
+  Object.values(letterAudios).forEach(unlockSound);
+  Object.values(phraseAudios).forEach(unlockSound);
 }
 
-// Play a satisfying pop sound when letter snaps into place
+// Play a satisfying suck-pop sound when letter snaps into place
 export function playPop() {
   initSounds();
-  if (popSound) {
-    popSound.currentTime = 0;
-    popSound.play().catch(() => {});
-  }
+  playSound(sounds.pop);
 }
 
-// Play a celebratory sound when word is complete (reuse pop for now)
-export function playCelebration() {
-  // Play pop 3 times quickly for celebration
-  initSounds();
-  if (popSound) {
-    popSound.currentTime = 0;
-    popSound.play().catch(() => {});
-
-    setTimeout(() => {
-      if (popSound) {
-        popSound.currentTime = 0;
-        popSound.play().catch(() => {});
-      }
-    }, 150);
-
-    setTimeout(() => {
-      if (popSound) {
-        popSound.currentTime = 0;
-        popSound.play().catch(() => {});
-      }
-    }, 300);
-  }
-}
-
-// Play a soft thud for wrong placement (reuse pop with lower volume)
+// Play a low soft thud for wrong placement
 export function playThud() {
   initSounds();
-  if (popSound) {
-    const originalVolume = popSound.volume;
-    popSound.volume = 0.3;
-    popSound.currentTime = 0;
-    popSound.play().catch(() => {});
-    setTimeout(() => {
-      if (popSound) popSound.volume = originalVolume;
-    }, 200);
-  }
+  playSound(sounds.thud);
+}
+
+// Play a bright tri-tone chime when the word is complete
+export function playCelebration() {
+  initSounds();
+  playSound(sounds.celebration);
+}
+
+// Play recorded narration for the letter tiles and return clip length (ms)
+export function playLetterSound(letter) {
+  const audio = getLetterAudio(letter);
+  if (!audio) return 0;
+  const played = playAudioFromTemplate(audio);
+  if (!played) return 0;
+  return getAudioDurationMs(audio, 600);
+}
+
+export function playIsSpelled() {
+  const audio = getPhraseAudio('isSpelled');
+  if (!audio) return 0;
+  const played = playAudioFromTemplate(audio);
+  if (!played) return 0;
+  return getAudioDurationMs(audio, 900);
+}
+
+export function playGreeting() {
+  const audio = getPhraseAudio('greeting');
+  if (!audio) return 0;
+  const played = playAudioFromTemplate(audio);
+  if (!played) return 0;
+  return getAudioDurationMs(audio, 2200);
+}
+
+export function playEncouragement() {
+  const keys = ['youDidGreat', 'youCanSpell', 'youDidIt', 'workingHard'];
+  const available = keys.filter(key => key !== lastEncouragementKey);
+  const pool = available.length ? available : keys;
+  const key = pool[Math.floor(Math.random() * pool.length)];
+  lastEncouragementKey = key;
+  const audio = getPhraseAudio(key);
+  if (!audio) return 0;
+  const played = playAudioFromTemplate(audio);
+  if (!played) return 0;
+  return getAudioDurationMs(audio, 1400);
 }

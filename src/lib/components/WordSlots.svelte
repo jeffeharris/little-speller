@@ -3,6 +3,7 @@
 
   export let word = '';
   export let slots = [];
+  export let wordHighlight = false;
 
   const dispatch = createEventDispatcher();
 
@@ -37,7 +38,11 @@
   }
 </script>
 
-<div class="word-container" bind:this={containerEl}>
+<div
+  class="word-container"
+  class:word-highlight={wordHighlight}
+  bind:this={containerEl}
+>
   {#each word.split('') as char, i}
     <div
       class="slot"
@@ -52,16 +57,27 @@
 <style>
   .word-container {
     display: flex;
-    gap: 8px;
+    gap: calc(var(--letter-size, 70px) * 0.12);
     justify-content: center;
     align-items: center;
-    padding: 20px;
+    padding: calc(var(--letter-size, 70px) * 0.28);
+    transition: transform 0.25s ease;
+    transform-origin: center bottom;
+  }
+
+  .word-container.word-highlight {
+    transform: none;
+    filter: none;
+  }
+
+  .word-container.word-highlight .slot {
+    opacity: 0;
   }
 
   .slot {
-    width: 70px;
-    height: 70px;
-    border-radius: 12px;
+    width: var(--letter-size, 70px);
+    height: var(--letter-size, 70px);
+    border-radius: var(--letter-radius, 12px);
     background-color: #f0f0f0;
     display: flex;
     align-items: center;
@@ -70,7 +86,7 @@
   }
 
   .ghost-letter {
-    font-size: 42px;
+    font-size: var(--letter-font-size, 42px);
     font-weight: bold;
     color: #d0d0d0;
     user-select: none;

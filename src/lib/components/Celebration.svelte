@@ -36,7 +36,6 @@
   {/each}
 
   <div class="message" in:scale={{ duration: 400, delay: 100 }}>
-    <div class="word">{word.toUpperCase()}</div>
     <div class="hooray">Great job!</div>
   </div>
 </div>
@@ -74,18 +73,11 @@
   .message {
     text-align: center;
     z-index: 10;
-  }
-
-  .word {
-    font-size: 64px;
-    font-weight: bold;
-    color: #4ECDC4;
-    text-shadow: 3px 3px 0 #45B7D1, 6px 6px 0 rgba(0, 0, 0, 0.1);
-    letter-spacing: 8px;
+    transform: translateY(28px);
   }
 
   .hooray {
-    font-size: 32px;
+    font-size: 40px;
     color: #FF6B6B;
     margin-top: 16px;
     font-weight: bold;

@@ -34,27 +34,33 @@ export function initSpeech() {
 }
 
 // Speak a word or letter
-export function speak(text, rate = 0.8) {
-  if (!synth) return;
+export function speak(text, rate = 0.8, { cancel = true } = {}) {
+  if (!synth) return Promise.resolve();
 
-  // Cancel any ongoing speech
-  synth.cancel();
+  if (cancel) {
+    synth.cancel();
+  }
 
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.voice = voice;
-  utterance.rate = rate;
-  utterance.pitch = 1.1; // Slightly higher pitch for kid-friendliness
-  utterance.volume = 1;
+  return new Promise(resolve => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.voice = voice;
+    utterance.rate = rate;
+    utterance.pitch = 1.1; // Slightly higher pitch for kid-friendliness
+    utterance.volume = 1;
 
-  synth.speak(utterance);
+    utterance.onend = () => resolve();
+    utterance.onerror = () => resolve();
+
+    synth.speak(utterance);
+  });
 }
 
 // Speak a single letter
 export function speakLetter(letter) {
-  speak(letter.toLowerCase(), 0.7);
+  return speak(letter.toLowerCase(), 0.7);
 }
 
 // Speak the full word
 export function speakWord(word) {
-  speak(word, 0.75);
+  return speak(word, 0.75);
 }
