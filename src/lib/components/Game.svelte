@@ -48,9 +48,20 @@
       window.speechSynthesis.speak(unlock);
     }
 
-    // Start the first word
+    game.setPhase('showing');
+
     const word = game.getNextWord();
-    startNewWord(word);
+    const greetingDuration = playGreeting();
+    if (greetingDuration) {
+      initialGreetingPlaying = true;
+      wait(greetingDuration + GREETING_BUFFER).then(() => {
+        initialGreetingPlaying = false;
+        startNewWord(word);
+      });
+    } else {
+      initialGreetingPlaying = false;
+      startNewWord(word);
+    }
   }
 
   function startNewWord(word) {

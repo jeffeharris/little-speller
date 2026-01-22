@@ -89,6 +89,13 @@ function createGameStore() {
   return {
     subscribe: store.subscribe,
 
+    setPhase(phase) {
+      store.update(s => ({
+        ...s,
+        phase
+      }));
+    },
+
     initWord(word, containerWidth, containerHeight) {
       const wordZoneTop = containerHeight * 0.35;
       const wordZoneBottom = containerHeight * 0.55;
