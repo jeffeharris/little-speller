@@ -83,7 +83,7 @@ function unlockSound(audio) {
   }
 }
 
-function playAudioFromTemplate(audio) {
+function playAudioFromTemplate(audio, { label = '' } = {}) {
   if (!audio) return false;
   const now = Date.now();
   const lastPlayed = audio.__lastPlayedTime || 0;
@@ -101,6 +101,25 @@ function playAudioFromTemplate(audio) {
     }
     return true;
   } catch {
+    return false;
+  }
+}
+
+async function playAudioDirect(audio) {
+  if (!audio) return false;
+  try {
+    audio.pause();
+    audio.currentTime = 0;
+    const result = audio.play();
+    if (result && typeof result.then === 'function') {
+      try {
+        await result;
+      } catch (error) {
+        return false;
+      }
+    }
+    return true;
+  } catch (error) {
     return false;
   }
 }
@@ -210,10 +229,10 @@ export function playIsSpelled() {
   return getAudioDurationMs(audio, 900);
 }
 
-export function playGreeting() {
+export async function playGreeting() {
   const audio = getPhraseAudio('greeting');
   if (!audio) return 0;
-  const played = playAudioFromTemplate(audio);
+  const played = await playAudioDirect(audio);
   if (!played) return 0;
   return getAudioDurationMs(audio, 2200);
 }

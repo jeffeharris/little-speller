@@ -43,6 +43,15 @@
   const GREETING_BUFFER = 350;
   const ENCOURAGEMENT_EVERY = 3;
   const ENCOURAGEMENT_BUFFER = 250;
+  const flowerStems = Array.from({ length: 100 }, (_, i) => {
+    const phase = i * 1.7;
+    const height = 4.5 + (Math.sin(phase) + 1) * 2.2;
+    return {
+      x: i,
+      height,
+      delay: (i % 10) * 0.35
+    };
+  });
 
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -84,7 +93,7 @@
   }
 
   // Called on user tap - unlocks audio on iOS
-  function handleTapToStart() {
+  async function handleTapToStart() {
     if (!waitingForTap) return;
     waitingForTap = false;
 
@@ -101,7 +110,7 @@
     game.setPhase('showing');
 
     const word = game.getNextWord();
-    const greetingDuration = playGreeting();
+    const greetingDuration = await playGreeting();
     if (greetingDuration) {
       initialGreetingPlaying = true;
       wait(greetingDuration + GREETING_BUFFER).then(() => {
@@ -109,8 +118,11 @@
         startNewWord(word);
       });
     } else {
-      initialGreetingPlaying = false;
-      startNewWord(word);
+      initialGreetingPlaying = true;
+      speak('Hello, little speller!', 0.82).then(() => {
+        initialGreetingPlaying = false;
+        startNewWord(word);
+      });
     }
   }
 
@@ -327,8 +339,9 @@
   }
 
   async function maybePlayEncouragement() {
-    const completedCount = $game.wordsCompleted + 1;
-    if (completedCount % ENCOURAGEMENT_EVERY !== 0) return;
+    const completedCount = $game.wordsCompleted;
+    if (completedCount < 1) return;
+    if ((completedCount - 1) % ENCOURAGEMENT_EVERY !== 0) return;
     const duration = playEncouragement();
     if (duration) {
       await wait(duration + ENCOURAGEMENT_BUFFER);
@@ -336,16 +349,26 @@
   }
 
   function getPlacedLetterSequence(word) {
-    const placedOrder = ($game.placementOrder || [])
-      .map(letterId => $game.letters.find(l => l.id === letterId))
+    const slotsWithIndex = ($game.slots || []).map((slot, index) => ({
+      ...slot,
+      index
+    }));
+
+    const orderedSlots = slotsWithIndex.sort((a, b) => {
+      if (a.x === b.x) return a.y - b.y;
+      return a.x - b.x;
+    });
+
+    const screenOrder = orderedSlots
+      .map(slot => $game.letters.find(letter => letter.id === slot.letterId))
       .filter(Boolean)
       .map(letter => ({
         char: letter.char,
         slotIndex: letter.slotIndex ?? letter.correctSlotIndex
       }));
 
-    if (placedOrder.length) {
-      return placedOrder;
+    if (screenOrder.length) {
+      return screenOrder;
     }
 
     return word.split('').map((char, i) => ({ char, slotIndex: i }));
@@ -399,13 +422,25 @@
       class="loading"
       type="button"
       on:click={handleTapToStart}
-      on:pointerdown={handleTapToStart}
-      on:touchstart={handleTapToStart}
     >
       <div class="loading-screen">
+        <div class="loading-butterflies" aria-hidden="true">
+          <span class="butterfly butterfly-1"></span>
+          <span class="butterfly butterfly-2"></span>
+          <span class="butterfly butterfly-3"></span>
+          <span class="butterfly butterfly-4"></span>
+          <span class="butterfly butterfly-5"></span>
+          <span class="butterfly butterfly-6"></span>
+        </div>
         <div class="loading-sun"></div>
+        <div class="loading-birds" aria-hidden="true">
+          <span class="bird bird-1"></span>
+          <span class="bird bird-2"></span>
+          <span class="bird bird-3"></span>
+        </div>
         <div class="loading-cloud loading-cloud-left"></div>
         <div class="loading-cloud loading-cloud-right"></div>
+        <div class="loading-cloud loading-cloud-mid"></div>
         <div class="loading-arc loading-arc-top">
           <span>L</span>
           <span>I</span>
@@ -423,18 +458,22 @@
           <span>E</span>
           <span>R</span>
         </div>
-        <div class="loading-board">
-          <div class="loading-chips">
-            <span class="chip chip-a">A</span>
-            <span class="chip chip-b">B</span>
-            <span class="chip chip-c">C</span>
-            <span class="chip chip-d">D</span>
-            <span class="chip chip-e">E</span>
-            <span class="chip chip-f">F</span>
-          </div>
-          <div class="loading-start">Tap to start</div>
-        </div>
+        <div class="loading-start">Tap to start</div>
         <div class="loading-floor"></div>
+        <div class="loading-flowers" aria-hidden="true">
+          {#each flowerStems as flower}
+            <span
+              class="flower"
+              style="
+                --x: {flower.x};
+                --h: {flower.height};
+                --delay: {flower.delay};
+              "
+            >
+              <span class="leaf"></span>
+            </span>
+          {/each}
+        </div>
       </div>
     </button>
   {/if}
@@ -457,7 +496,7 @@
 
   .word-area {
     position: absolute;
-    top: 50%;
+    top: 68%;
     left: 50%;
     transform: translate(-50%, -50%);
     z-index: 5;
@@ -512,26 +551,162 @@
   .loading-cloud-left {
     top: 70px;
     left: 8%;
-    animation: drift 12s ease-in-out infinite;
+    animation: drift 70s linear infinite;
   }
 
   .loading-cloud-right {
     top: 120px;
-    right: 14%;
-    animation: drift 10s ease-in-out infinite reverse;
+    left: 36%;
+    animation: drift 90s linear infinite;
+    animation-delay: -18s;
   }
 
+  .loading-cloud-mid {
+    top: 170px;
+    left: 62%;
+    transform: scale(0.85);
+    animation: drift 80s linear infinite;
+    animation-delay: -36s;
+  }
+
+  .loading-butterflies {
+    position: absolute;
+    top: 72vh;
+    left: 0;
+    width: 100%;
+    height: 28vh;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .butterfly {
+    position: absolute;
+    width: 40px;
+    height: 20px;
+    opacity: 0.85;
+    filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.12));
+    transform: scale(var(--bird-scale, 1));
+  }
+
+  .butterfly::before,
+  .butterfly::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 0;
+    border-top: 4px solid currentColor;
+  }
+
+  .butterfly::before {
+    left: 50%;
+    top: 8px;
+    transform-origin: right center;
+    transform: translateX(-100%) rotate(-18deg);
+    animation: flap-left 1.2s ease-in-out infinite;
+  }
+
+  .butterfly::after {
+    right: 50%;
+    top: 8px;
+    transform-origin: left center;
+    transform: rotate(18deg);
+    animation: flap-right 1.2s ease-in-out infinite;
+  }
+
+  .butterfly-1 {
+    top: 10px;
+    --bird-scale: 0.95;
+    color: #ff6b6b;
+    animation: flutter-1 60s ease-in-out infinite;
+  }
+
+  .butterfly-2 {
+    top: 58px;
+    --bird-scale: 0.75;
+    opacity: 0.7;
+    color: #4d96ff;
+    animation: flutter-2 68s ease-in-out infinite;
+  }
+
+  .butterfly-3 {
+    top: 32px;
+    --bird-scale: 0.85;
+    opacity: 0.65;
+    color: #ff9b85;
+    animation: flutter-3 62s ease-in-out infinite;
+  }
+
+  .butterfly-4 {
+    top: 84px;
+    --bird-scale: 0.7;
+    opacity: 0.6;
+    color: #ffd166;
+    animation: flutter-4 72s ease-in-out infinite;
+  }
+
+  .butterfly-5 {
+    top: 18px;
+    --bird-scale: 0.8;
+    opacity: 0.7;
+    color: #8fd3ff;
+    animation: flutter-5 58s ease-in-out infinite;
+  }
+
+  .butterfly-6 {
+    top: 110px;
+    --bird-scale: 0.65;
+    opacity: 0.55;
+    color: #cdb4f6;
+    animation: flutter-6 78s ease-in-out infinite;
+  }
+
+  .loading-birds {
+    position: absolute;
+    top: 8vh;
+    left: 0;
+    width: 100%;
+    height: 18vh;
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  .bird {
+    position: absolute;
+    width: 3.6rem;
+    height: 1.4rem;
+    border-top: 0.3rem solid #1f3c40;
+    border-radius: 50% 50% 0 0;
+    opacity: 0.75;
+    animation: bird-fly 50s linear infinite;
+  }
+
+  .bird::after {
+    content: '';
+    position: absolute;
+    right: -1.4rem;
+    top: -0.06rem;
+    width: 3.6rem;
+    height: 1.4rem;
+    border-top: 0.3rem solid #1f3c40;
+    border-radius: 50% 50% 0 0;
+    transform: scaleX(-1);
+  }
+
+  .bird-1 { top: 0.6rem; left: -20%; animation-delay: -6s; }
+  .bird-2 { top: 3.4rem; left: -30%; animation-delay: -18s; opacity: 0.6; }
+  .bird-3 { top: 1.9rem; left: -25%; animation-delay: -30s; opacity: 0.55; }
 
   .loading-arc {
     position: absolute;
-    top: 18px;
+    top: 50%;
     left: 50%;
-    transform: translateX(-50%);
-    width: min(520px, 86vw);
-    height: 140px;
+    transform: translate(-50%, -50%);
+    width: min(96vw, 52rem);
+    height: 28vh;
     display: flex;
     align-items: flex-end;
     justify-content: center;
+    padding: 0 8vw;
     pointer-events: none;
   }
 
@@ -539,83 +714,43 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 46px;
-    height: 46px;
-    margin: 0 4px;
-    border-radius: 50%;
-    font-size: 24px;
-    font-weight: 800;
-    color: #ffffff;
-    box-shadow: 0 8px 14px rgba(0, 0, 0, 0.18);
-    transform-origin: 50% 120px;
+    width: auto;
+    height: auto;
+    margin: 0 0.35rem;
+    padding: 0 0.12rem;
+    font-size: clamp(5.184rem, 15.552vw, 12.96rem);
+    font-weight: 900;
+    color: #1d3557;
     animation: pop 1.8s ease-in-out infinite;
   }
 
   .loading-arc-top {
-    top: 14px;
+    top: calc(40% - 12vh);
   }
 
   .loading-arc-bottom {
-    top: 78px;
-    width: min(560px, 92vw);
-    height: 150px;
+    top: calc(45% + 9vh);
+    width: min(94vw, 42rem);
+    height: 22vh;
   }
 
-  .loading-arc span:nth-child(1) { background: #ff6b6b; transform: rotate(-26deg); animation-delay: 0s; }
-  .loading-arc span:nth-child(2) { background: #f4a261; transform: rotate(-18deg); animation-delay: 0.1s; }
-  .loading-arc span:nth-child(3) { background: #f9c74f; transform: rotate(-10deg); animation-delay: 0.2s; }
-  .loading-arc span:nth-child(4) { background: #90be6d; transform: rotate(0deg); animation-delay: 0.3s; }
-  .loading-arc span:nth-child(5) { background: #4d96ff; transform: rotate(10deg); animation-delay: 0.4s; }
-  .loading-arc span:nth-child(6) { background: #9b5de5; transform: rotate(18deg); animation-delay: 0.5s; }
-  .loading-arc span:nth-child(7) { background: #ff6fae; transform: rotate(26deg); animation-delay: 0.6s; }
+  .loading-arc span:nth-child(1) { color: #ff6b6b; animation-delay: 0s; }
+  .loading-arc span:nth-child(2) { color: #f4a261; animation-delay: 0.1s; }
+  .loading-arc span:nth-child(3) { color: #f9c74f; animation-delay: 0.2s; }
+  .loading-arc span:nth-child(4) { color: #90be6d; animation-delay: 0.3s; }
+  .loading-arc span:nth-child(5) { color: #4d96ff; animation-delay: 0.4s; }
+  .loading-arc span:nth-child(6) { color: #9b5de5; animation-delay: 0.5s; }
+  .loading-arc span:nth-child(7) { color: #ff6fae; animation-delay: 0.6s; }
 
-
-  .loading-board {
-    background: #fff7e1;
-    border-radius: 24px;
-    padding: 24px 32px;
-    box-shadow: 0 18px 32px rgba(0, 0, 0, 0.12);
-    border: 4px solid #ffe08a;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 18px;
-  }
-
-  .loading-chips {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-
-  .chip {
-    width: 52px;
-    height: 52px;
-    border-radius: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 26px;
-    font-weight: 700;
-    color: #ffffff;
-    box-shadow: 0 8px 14px rgba(0, 0, 0, 0.18);
-    animation: pop 1.8s ease-in-out infinite;
-  }
-
-  .chip-a { background: #ff6b6b; }
-  .chip-b { background: #f4a261; animation-delay: 0.1s; }
-  .chip-c { background: #f9c74f; animation-delay: 0.2s; }
-  .chip-d { background: #90be6d; animation-delay: 0.3s; }
-  .chip-e { background: #4d96ff; animation-delay: 0.4s; }
-  .chip-f { background: #9b5de5; animation-delay: 0.5s; }
 
   .loading-start {
-    font-size: 24px;
+    position: absolute;
+    bottom: 25%;
+    font-size: 1.5rem;
     font-weight: 700;
     color: #1d3557;
     background: #bde0fe;
-    padding: 10px 22px;
+    padding: 0.6rem 1.4rem;
     border-radius: 999px;
     box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.12);
     animation: pulse 1.5s ease-in-out infinite;
@@ -629,24 +764,180 @@
     background: radial-gradient(circle at 50% 0%, #d0f4de 0%, #f6fff8 60%);
   }
 
+  .loading-flowers {
+    position: absolute;
+    bottom: 8px;
+    left: 0;
+    width: 100%;
+    height: 12vh;
+    pointer-events: none;
+  }
+
+  .flower {
+    position: absolute;
+    bottom: 0;
+    left: calc(var(--x) * 1%);
+    width: 0.35rem;
+    height: calc(var(--h) * 1vh);
+    background: linear-gradient(180deg, #5bb673 0%, #3f8f57 100%);
+    border-radius: 999px;
+    transform-origin: bottom center;
+    animation: sway 5s ease-in-out infinite;
+    animation-delay: calc(var(--delay) * 1s);
+  }
+
+  .flower .leaf {
+    position: absolute;
+    left: 50%;
+    top: 40%;
+    width: 0.8rem;
+    height: 0.5rem;
+    background: linear-gradient(180deg, #63c77a 0%, #3d9b5a 100%);
+    border-radius: 0.8rem 0.8rem 0.1rem 0.8rem;
+    transform: translateX(-80%) rotate(-22deg);
+    opacity: 0;
+  }
+
+  .flower:nth-child(3n) .leaf {
+    opacity: 0.9;
+  }
+
+  .flower:nth-child(5n) .leaf {
+    transform: translateX(-10%) rotate(18deg) scaleX(-1);
+    opacity: 0.8;
+  }
+
+  .flower::before,
+  .flower::after {
+    content: '';
+    position: absolute;
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 50%;
+    top: -0.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .flower::before {
+    background: #fbd1e6;
+    box-shadow:
+      0.7rem 0.3rem 0 #ffd166,
+      -0.7rem 0.3rem 0 #ff9b85,
+      0 0.8rem 0 #ffe08a,
+      0.7rem -0.2rem 0 #cdb4f6,
+      -0.7rem -0.2rem 0 #8fd3ff,
+      0 1rem 0 #ffe6a7,
+      0.85rem 0.6rem 0 #ffb5c5;
+  }
+
+  .flower::after {
+    width: 0.3rem;
+    height: 0.3rem;
+    background: #ff6b6b;
+    top: -0.12rem;
+  }
+
   @keyframes pulse {
     0%, 100% { opacity: 0.5; }
     50% { opacity: 1; }
   }
 
-  @keyframes pop {
-    0%, 100% { transform: translateY(0) scale(1); }
-    50% { transform: translateY(-6px) scale(1.05); }
-  }
-
   @keyframes drift {
-    0%, 100% { transform: translateX(0); }
-    50% { transform: translateX(18px); }
+    0% { transform: translateX(-140%); }
+    100% { transform: translateX(140%); }
   }
 
   @keyframes floaty {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(10px); }
+  }
+
+  @keyframes flutter-1 {
+    0% { transform: translate(-40vw, 6vh) scale(var(--bird-scale)); }
+    14% { transform: translate(2vw, 1vh) scale(var(--bird-scale)); }
+    28% { transform: translate(16vw, 9vh) scale(var(--bird-scale)); }
+    38% { transform: translate(12vw, 20vh) scale(var(--bird-scale)); }
+    48% { transform: translate(12vw, 20vh) scale(var(--bird-scale)); }
+    66% { transform: translate(44vw, 8vh) scale(var(--bird-scale)); }
+    80% { transform: translate(74vw, 18vh) scale(var(--bird-scale)); }
+    90% { transform: translate(60vw, 14vh) scale(var(--bird-scale)) scaleX(-1); }
+    100% { transform: translate(-40vw, 10vh) scale(var(--bird-scale)) scaleX(-1); }
+  }
+
+  @keyframes flutter-2 {
+    0% { transform: translate(130vw, 10vh) scale(var(--bird-scale)) scaleX(-1); }
+    18% { transform: translate(96vw, 2vh) scale(var(--bird-scale)) scaleX(-1); }
+    34% { transform: translate(70vw, 14vh) scale(var(--bird-scale)) scaleX(-1); }
+    44% { transform: translate(70vw, 24vh) scale(var(--bird-scale)) scaleX(-1); }
+    56% { transform: translate(70vw, 24vh) scale(var(--bird-scale)) scaleX(-1); }
+    72% { transform: translate(34vw, 6vh) scale(var(--bird-scale)) scaleX(-1); }
+    86% { transform: translate(8vw, 18vh) scale(var(--bird-scale)) scaleX(-1); }
+    100% { transform: translate(130vw, 12vh) scale(var(--bird-scale)); }
+  }
+
+  @keyframes flutter-3 {
+    0% { transform: translate(-30vw, 9vh) scale(var(--bird-scale)); }
+    18% { transform: translate(6vw, 0vh) scale(var(--bird-scale)); }
+    34% { transform: translate(24vw, 12vh) scale(var(--bird-scale)); }
+    46% { transform: translate(24vw, 22vh) scale(var(--bird-scale)); }
+    58% { transform: translate(24vw, 22vh) scale(var(--bird-scale)); }
+    72% { transform: translate(56vw, 10vh) scale(var(--bird-scale)); }
+    86% { transform: translate(80vw, 20vh) scale(var(--bird-scale)); }
+    100% { transform: translate(140vw, 12vh) scale(var(--bird-scale)); }
+  }
+
+  @keyframes flutter-4 {
+    0% { transform: translate(120vw, 16vh) scale(var(--bird-scale)) scaleX(-1); }
+    18% { transform: translate(84vw, 6vh) scale(var(--bird-scale)) scaleX(-1); }
+    36% { transform: translate(56vw, 16vh) scale(var(--bird-scale)) scaleX(-1); }
+    50% { transform: translate(56vw, 26vh) scale(var(--bird-scale)) scaleX(-1); }
+    62% { transform: translate(56vw, 26vh) scale(var(--bird-scale)) scaleX(-1); }
+    78% { transform: translate(26vw, 10vh) scale(var(--bird-scale)) scaleX(-1); }
+    92% { transform: translate(6vw, 22vh) scale(var(--bird-scale)) scaleX(-1); }
+    100% { transform: translate(120vw, 18vh) scale(var(--bird-scale)); }
+  }
+
+  @keyframes flutter-5 {
+    0% { transform: translate(-35vw, 6vh) scale(var(--bird-scale)); }
+    16% { transform: translate(0vw, 12vh) scale(var(--bird-scale)); }
+    32% { transform: translate(18vw, 4vh) scale(var(--bird-scale)); }
+    46% { transform: translate(18vw, 18vh) scale(var(--bird-scale)); }
+    58% { transform: translate(18vw, 18vh) scale(var(--bird-scale)); }
+    74% { transform: translate(54vw, 12vh) scale(var(--bird-scale)); }
+    88% { transform: translate(82vw, 6vh) scale(var(--bird-scale)); }
+    100% { transform: translate(140vw, 14vh) scale(var(--bird-scale)); }
+  }
+
+  @keyframes flutter-6 {
+    0% { transform: translate(-45vw, 18vh) scale(var(--bird-scale)); }
+    20% { transform: translate(6vw, 22vh) scale(var(--bird-scale)); }
+    36% { transform: translate(24vw, 12vh) scale(var(--bird-scale)); }
+    50% { transform: translate(24vw, 26vh) scale(var(--bird-scale)); }
+    62% { transform: translate(24vw, 26vh) scale(var(--bird-scale)); }
+    78% { transform: translate(58vw, 18vh) scale(var(--bird-scale)); }
+    92% { transform: translate(84vw, 10vh) scale(var(--bird-scale)); }
+    100% { transform: translate(140vw, 20vh) scale(var(--bird-scale)); }
+  }
+
+  @keyframes bird-fly {
+    0% { transform: translateX(-20%); }
+    100% { transform: translateX(140%); }
+  }
+
+  @keyframes flap-left {
+    0%, 100% { transform: translateX(-100%) rotate(-26deg); }
+    50% { transform: translateX(-100%) rotate(-6deg); }
+  }
+
+  @keyframes flap-right {
+    0%, 100% { transform: rotate(26deg); }
+    50% { transform: rotate(6deg); }
+  }
+
+  @keyframes sway {
+    0%, 100% { transform: rotate(-3deg); }
+    50% { transform: rotate(3deg); }
   }
 
   .score {
