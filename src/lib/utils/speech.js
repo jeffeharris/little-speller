@@ -64,3 +64,8 @@ export function speakLetter(letter) {
 export function speakWord(word) {
   return speak(word, 0.75);
 }
+
+export function stopSpeech() {
+  if (!synth) return;
+  synth.cancel();
+}
