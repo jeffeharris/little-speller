@@ -1,8 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { spring } from 'svelte/motion';
-  import { speakLetter } from '$lib/utils/speech.js';
-  import { resumeAudio, playLetterSoundImmediate } from '$lib/utils/sounds.js';
+  import { audioService } from '$lib/services/audioService.js';
 
   export let letter;
   export let placed = false;
@@ -11,6 +10,7 @@
   export let interactable = true;
 
   const dispatch = createEventDispatcher();
+  const audio = audioService;
 
   let isDragging = false;
   let dragOffset = { x: 0, y: 0 };
@@ -47,7 +47,7 @@
     e.stopPropagation();
 
     // Resume audio context on first interaction
-    resumeAudio();
+    audio.unlockAudio();
 
     isDragging = true;
     velocity = { x: 0, y: 0 };
@@ -61,10 +61,7 @@
     };
 
     // Play recorded narration, fall back to TTS if needed
-    const clipDuration = playLetterSoundImmediate(letter.char);
-    if (!clipDuration) {
-      speakLetter(letter.char);
-    }
+    void audio.playLetter(letter.char, { immediate: true });
 
     // Capture pointer for smooth dragging
     e.currentTarget.setPointerCapture(e.pointerId);

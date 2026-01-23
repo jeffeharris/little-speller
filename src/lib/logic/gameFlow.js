@@ -1,24 +1,8 @@
 import { get, writable } from 'svelte/store';
 import { createSequenceController, wait } from '$lib/utils/sequence.js';
-import { speak, speakLetter, speakWord, stopSpeech } from '$lib/utils/speech.js';
-import {
-  playCelebration,
-  playEncouragement,
-  playGreeting,
-  playIsSpelled,
-  playLetterSound,
-  resumeAudio,
-  stopNarration
-} from '$lib/utils/sounds.js';
+import { audioService } from '$lib/services/audioService.js';
 
-const LETTER_MIN_DURATION = 350;
-const WORD_MIN_DURATION = 500;
-const IS_SPELLED_DELAY = 900;
-const IS_SPELLED_BUFFER = 250;
-const LETTER_BUFFER_AFTER = 220;
-const GREETING_BUFFER = 350;
 const ENCOURAGEMENT_EVERY = 3;
-const ENCOURAGEMENT_BUFFER = 250;
 
 const FLOW_PHASES = {
   LOCKED: 'locked',
@@ -39,6 +23,7 @@ const FLOW_TRANSITIONS = {
 };
 
 export function createGameFlow({ game }) {
+  const audio = audioService;
   const state = writable({
     flowPhase: FLOW_PHASES.LOCKED,
     celebrating: false,
@@ -55,8 +40,7 @@ export function createGameFlow({ game }) {
 
   const narrationFlow = createSequenceController({
     onCancel: () => {
-      stopSpeech();
-      stopNarration();
+      audio.stopNarration();
       resetNarrationHighlights();
     }
   });
@@ -93,10 +77,8 @@ export function createGameFlow({ game }) {
     if (highlight) {
       setState({ wordHighlightActive: true });
     }
-    await Promise.all([
-      speakWord(word),
-      wait(WORD_MIN_DURATION, sequence?.signal)
-    ]);
+    const { durationMs: wordDuration } = await audio.playWord(word, { rate: 0.75 });
+    await wait(wordDuration, sequence?.signal);
     if (!isSequenceActive(sequence)) {
       if (highlight) {
         setState({ wordHighlightActive: false });
@@ -108,11 +90,8 @@ export function createGameFlow({ game }) {
     }
     await wait(150, sequence?.signal);
     if (!isSequenceActive(sequence)) return;
-    const phraseDuration = playIsSpelled();
-    const phraseWait = phraseDuration
-      ? phraseDuration + IS_SPELLED_BUFFER
-      : IS_SPELLED_DELAY;
-    await wait(phraseWait, sequence?.signal);
+    const { durationMs, bufferMs } = await audio.playPhrase('isSpelled');
+    await wait(durationMs + bufferMs, sequence?.signal);
   }
 
   function setLayout(nextLayout) {
@@ -136,25 +115,18 @@ export function createGameFlow({ game }) {
     if (current.flowPhase !== FLOW_PHASES.LOCKED) return;
     if (!transitionFlow(FLOW_PHASES.GREETING)) return;
 
-    resumeAudio();
-
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      const unlock = new SpeechSynthesisUtterance('');
-      window.speechSynthesis.speak(unlock);
-    }
+    audio.unlockAudio();
 
     const sequence = narrationFlow.start('greeting');
     game.setPhase('showing');
 
     const word = game.getNextWord();
-    const greetingDuration = await playGreeting();
+    const { durationMs, bufferMs } = await audio.playPhrase('greeting');
     if (!sequence.isCurrent()) return;
 
     setState({ initialGreetingPlaying: true });
-    if (greetingDuration) {
-      await wait(greetingDuration + GREETING_BUFFER, sequence.signal);
-    } else {
-      await speak('Hello, little speller!', 0.82);
+    if (durationMs) {
+      await wait(durationMs + bufferMs, sequence.signal);
     }
     if (!sequence.isCurrent()) {
       setState({ initialGreetingPlaying: false });
@@ -225,7 +197,7 @@ export function createGameFlow({ game }) {
     try {
       await wait(1000, sequence.signal);
       if (!sequence.isCurrent()) return;
-      playCelebration();
+      audio.playSfx('celebration');
       await wait(1000, sequence.signal);
       if (!sequence.isCurrent()) return;
       await maybePlayEncouragement(sequence);
@@ -250,25 +222,18 @@ export function createGameFlow({ game }) {
     const letters = word.split('');
     for (let i = 0; i < letters.length; i++) {
       setState({ activeCelebrationSlot: i });
-      const clipDuration = playLetterSound(letters[i]);
-      if (clipDuration) {
-        await wait(clipDuration + LETTER_BUFFER_AFTER, sequence?.signal);
-      } else {
-        await Promise.all([
-          speakLetter(letters[i]),
-          wait(LETTER_MIN_DURATION, sequence?.signal)
-        ]);
-        await wait(LETTER_BUFFER_AFTER, sequence?.signal);
-      }
+      const { durationMs, bufferMs } = await audio.playLetter(letters[i]);
+      await wait(durationMs + bufferMs, sequence?.signal);
       if (!isSequenceActive(sequence)) return;
       setState({ activeCelebrationSlot: -1 });
     }
 
     setState({ wordHighlightActive: true });
-    await Promise.all([
-      speak(`${word}.`, 0.78),
-      wait(WORD_MIN_DURATION, sequence?.signal)
-    ]);
+    const { durationMs: wordDuration } = await audio.playWord(word, {
+      rate: 0.78,
+      text: `${word}.`
+    });
+    await wait(wordDuration, sequence?.signal);
     if (!isSequenceActive(sequence)) return;
     setState({ wordHighlightActive: false });
     await wait(150, sequence?.signal);
@@ -281,25 +246,15 @@ export function createGameFlow({ game }) {
     for (let i = 0; i < sequenceLetters.length; i++) {
       const { char, slotIndex } = sequenceLetters[i];
       setState({ activeCelebrationSlot: slotIndex });
-      const clipDuration = playLetterSound(char);
-      if (clipDuration) {
-        await wait(clipDuration + LETTER_BUFFER_AFTER, sequence?.signal);
-      } else {
-        await Promise.all([
-          speakLetter(char),
-          wait(LETTER_MIN_DURATION, sequence?.signal)
-        ]);
-        await wait(LETTER_BUFFER_AFTER, sequence?.signal);
-      }
+      const { durationMs, bufferMs } = await audio.playLetter(char);
+      await wait(durationMs + bufferMs, sequence?.signal);
       if (!isSequenceActive(sequence)) return;
       setState({ activeCelebrationSlot: -1 });
     }
 
     setState({ wordHighlightActive: true });
-    await Promise.all([
-      speakWord(word),
-      wait(WORD_MIN_DURATION, sequence?.signal)
-    ]);
+    const { durationMs: wordDuration } = await audio.playWord(word, { rate: 0.75 });
+    await wait(wordDuration, sequence?.signal);
     if (!isSequenceActive(sequence)) return;
     setState({ wordHighlightActive: false });
     await wait(150, sequence?.signal);
@@ -309,9 +264,9 @@ export function createGameFlow({ game }) {
     const completedCount = get(game).wordsCompleted;
     if (completedCount < 1) return;
     if ((completedCount - 1) % ENCOURAGEMENT_EVERY !== 0) return;
-    const duration = playEncouragement();
-    if (duration) {
-      await wait(duration + ENCOURAGEMENT_BUFFER, sequence?.signal);
+    const { durationMs, bufferMs } = await audio.playPhrase('encouragement');
+    if (durationMs) {
+      await wait(durationMs + bufferMs, sequence?.signal);
     }
   }
 

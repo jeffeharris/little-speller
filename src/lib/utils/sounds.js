@@ -84,11 +84,26 @@ function unlockSound(audio) {
   }
 }
 
-async function playAudioDirect(audio) {
+function seekAudio(audio, startAtMs) {
+  if (!audio || typeof startAtMs !== 'number') return;
+  const nextSeconds = Math.max(0, startAtMs) / 1000;
+  const duration = audio.duration;
+  const maxSeconds = Number.isFinite(duration) && duration > 0
+    ? Math.max(0, duration - 0.05)
+    : null;
+  try {
+    audio.currentTime = maxSeconds === null ? nextSeconds : Math.min(nextSeconds, maxSeconds);
+  } catch {
+    // Ignore seek failures
+  }
+}
+
+async function playAudioDirect(audio, { startAtMs } = {}) {
   if (!audio) return false;
   try {
     audio.pause();
     audio.currentTime = 0;
+    seekAudio(audio, startAtMs);
     const result = audio.play();
     if (result && typeof result.then === 'function') {
       try {
@@ -114,7 +129,7 @@ function playSound(audio) {
   }
 }
 
-function playAudioFromTemplate(audio) {
+function playAudioFromTemplate(audio, { startAtMs } = {}) {
   if (!audio) return false;
   const now = Date.now();
   const lastPlayed = audio.__lastPlayedTime || 0;
@@ -125,6 +140,7 @@ function playAudioFromTemplate(audio) {
     const instance = audio.cloneNode(true);
     instance.currentTime = 0;
     instance.volume = audio.volume;
+    seekAudio(instance, startAtMs);
     const result = instance.play();
     audio.__lastPlayedTime = now;
     if (result && typeof result.then === 'function') {
@@ -147,7 +163,7 @@ function stopNarrationAudio() {
   activeNarrationAudio = null;
 }
 
-function playNarrationAudio(audio) {
+function playNarrationAudio(audio, { startAtMs } = {}) {
   if (!audio) return false;
   if (activeNarrationAudio && activeNarrationAudio !== audio) {
     stopNarrationAudio();
@@ -161,6 +177,7 @@ function playNarrationAudio(audio) {
   try {
     audio.pause();
     audio.currentTime = 0;
+    seekAudio(audio, startAtMs);
     const result = audio.play();
     if (result && typeof result.then === 'function') {
       result.catch(() => {
@@ -193,19 +210,20 @@ function cacheDurationOnLoad(audio, fallback) {
   return fallback;
 }
 
-function getAudioDurationMs(audio, fallback = 500) {
+function getAudioDurationMs(audio, fallback = 500, startAtMs = 0) {
   if (!audio) return fallback;
   const cached = audio.__cachedDurationMs;
   if (typeof cached === 'number' && cached > 0) {
-    return cached;
+    return Math.max(0, cached - Math.max(0, startAtMs));
   }
   const duration = audio.duration;
   if (Number.isFinite(duration) && duration > 0) {
     const ms = duration * 1000;
     audio.__cachedDurationMs = ms;
-    return ms;
+    return Math.max(0, ms - Math.max(0, startAtMs));
   }
-  return cacheDurationOnLoad(audio, fallback);
+  const base = cacheDurationOnLoad(audio, fallback);
+  return Math.max(0, base - Math.max(0, startAtMs));
 }
 
 function getLetterAudio(letter) {
@@ -260,31 +278,31 @@ export function playCelebration() {
 }
 
 // Play recorded narration for the letter tiles and return clip length (ms)
-export function playLetterSound(letter) {
+export function playLetterSound(letter, { startAtMs } = {}) {
   const audio = getLetterAudio(letter);
   if (!audio) return 0;
-  const played = playNarrationAudio(audio);
+  const played = playNarrationAudio(audio, { startAtMs });
   if (!played) return 0;
-  return getAudioDurationMs(audio, 600);
+  return getAudioDurationMs(audio, 600, startAtMs);
 }
 
-export function playLetterSoundImmediate(letter) {
+export function playLetterSoundImmediate(letter, { startAtMs } = {}) {
   const audio = getLetterAudio(letter);
   if (!audio) return 0;
-  const played = playAudioFromTemplate(audio);
+  const played = playAudioFromTemplate(audio, { startAtMs });
   if (!played) return 0;
-  return getAudioDurationMs(audio, 600);
+  return getAudioDurationMs(audio, 600, startAtMs);
 }
 
-export function playIsSpelled() {
+export function playIsSpelled({ startAtMs } = {}) {
   const audio = getPhraseAudio('isSpelled');
   if (!audio) return 0;
-  const played = playNarrationAudio(audio);
+  const played = playNarrationAudio(audio, { startAtMs });
   if (!played) return 0;
-  return getAudioDurationMs(audio, 900);
+  return getAudioDurationMs(audio, 900, startAtMs);
 }
 
-export async function playGreeting() {
+export async function playGreeting({ startAtMs } = {}) {
   const audio = getPhraseAudio('greeting');
   if (!audio) return 0;
   stopNarrationAudio();
@@ -294,17 +312,17 @@ export async function playGreeting() {
       activeNarrationAudio = null;
     }
   };
-  const played = await playAudioDirect(audio);
+  const played = await playAudioDirect(audio, { startAtMs });
   if (!played) {
     if (activeNarrationAudio === audio) {
       activeNarrationAudio = null;
     }
     return 0;
   }
-  return getAudioDurationMs(audio, 2200);
+  return getAudioDurationMs(audio, 2200, startAtMs);
 }
 
-export function playEncouragement() {
+export function playEncouragement({ startAtMs } = {}) {
   const keys = ['youDidGreat', 'youCanSpell', 'youDidIt', 'workingHard'];
   const available = keys.filter(key => key !== lastEncouragementKey);
   const pool = available.length ? available : keys;
@@ -312,7 +330,7 @@ export function playEncouragement() {
   lastEncouragementKey = key;
   const audio = getPhraseAudio(key);
   if (!audio) return 0;
-  const played = playNarrationAudio(audio);
+  const played = playNarrationAudio(audio, { startAtMs });
   if (!played) return 0;
-  return getAudioDurationMs(audio, 1400);
+  return getAudioDurationMs(audio, 1400, startAtMs);
 }

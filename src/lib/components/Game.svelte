@@ -1,14 +1,15 @@
 <script>
   import { onMount } from 'svelte';
+  import { dev } from '$app/environment';
   import { game } from '$lib/stores/game.js';
-  import { initSpeech } from '$lib/utils/speech.js';
-  import { playPop, playThud } from '$lib/utils/sounds.js';
+  import { audioService } from '$lib/services/audioService.js';
   import { createGameFlow } from '$lib/logic/gameFlow.js';
   import Letter from './Letter.svelte';
   import WordSlots from './WordSlots.svelte';
   import Celebration from './Celebration.svelte';
 
   const flow = createGameFlow({ game });
+  const audio = audioService;
 
   let containerEl;
   let containerWidth = 0;
@@ -22,7 +23,6 @@
   let halfLetter = 35;
   let letterFontSize = 42;
   let letterRadius = 12;
-  const LETTER_MIN_DURATION = 350;
   $: if ($game.letterSize) {
     const size = $game.letterSize;
     snapDistance = size * 0.85;
@@ -41,7 +41,6 @@
   });
 
   onMount(() => {
-    initSpeech();
     updateContainerSize();
     window.addEventListener('resize', updateContainerSize);
 
@@ -126,9 +125,9 @@
         game.placeLetter(letter.id, i);
 
         if (isMatch) {
-          playPop();
+          audio.playSfx('pop');
         } else {
-          playThud();
+          audio.playSfx('thud');
         }
         return;
       }
@@ -254,6 +253,11 @@
   <div class="score">
     Words: {$game.wordsCompleted}
   </div>
+  {#if dev}
+    <div class="debug-flow" aria-hidden="true">
+      {$flow.flowPhase} / {$game.phase}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -748,6 +752,19 @@
     padding: 8px 16px;
     border-radius: 20px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .debug-flow {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #1f2d3d;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
   }
 
   .word-stage {
